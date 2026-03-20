@@ -4,7 +4,7 @@ from datetime import datetime, date
 
 from faker import Faker
 
-from base import BaseModel
+from .base import BaseModel
 
 
 faker = Faker()
