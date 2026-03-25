@@ -1,14 +1,15 @@
-import logging
-import random
 import datetime
+import logging
+import os
+import random
+import time
 
 import psycopg
-from psycopg.rows import dict_row
 from faker import Faker
+from psycopg.rows import dict_row
 
 from config import setup_logger
 from models.person import Person
-
 
 logger = logging.getLogger(__name__)
 
@@ -57,7 +58,7 @@ class FakeIngestData:
                 # Check if table exists
                 curr.execute(
                     """
-                    SELECT SELECT (
+                    SELECT EXISTS (
                         SELECT 1 
                         FROM information_schema.tables 
                         WHERE table_name = '{}'
@@ -90,7 +91,7 @@ class FakeIngestData:
         else:
             logger.info(f"Table '{table_name}' already exists.")
     
-    def generate_data(self, batch_size: int = 10000):
+    def generate_data(self, batch_size: int = 10000) -> list[Person]:
         """
         Generates a list of fake users.
 
@@ -99,10 +100,11 @@ class FakeIngestData:
         """
         
         logger.info(f'Starting data generation for {batch_size} users...')
-        self.person_list = [Person.generate_person() for _ in range(batch_size)]
-        logger.info(f'Data generation completed: {len(self.person_list)} persons created')
+        person_list = [Person.generate_person() for _ in range(batch_size)]
+        logger.info(f'Data generation completed: {len(person_list)} persons created')
+        return person_list
     
-    def add_new_data(self) -> None:
+    def add_new_data(self, person_list: list[Person]) -> None:
         """
         Inserts generated users into the raw_users table.
         """
@@ -111,7 +113,7 @@ class FakeIngestData:
         
         with psycopg.connect(**self.connection_args) as conn:
             with conn.cursor() as curr:
-                rows_to_insert = [list(person.to_dict().values()) for person in self.person_list]
+                rows_to_insert = [list(person.to_dict().values()) for person in person_list]
                 logger.debug(f'Prepared {len(rows_to_insert)} rows for insertion')
                 
                 curr.executemany(
@@ -175,4 +177,40 @@ class FakeIngestData:
                 )
                 
                 logger.info(f"Inserted updated row for user_id {res['user_id']}")
+
+
+def main() -> None:
+    db_config = {
+        "dbname": os.getenv("DB_NAME", "postgres"),
+        "user": os.getenv("DB_USER", "postgres"),
+        "password": os.getenv("DB_PASSWORD", "postgres"),
+        "host": os.getenv("DB_HOST", "localhost"),
+        "port": os.getenv("DB_PORT", "5432"),
+    }
+
+    batch_size = int(os.getenv("BATCH_SIZE", "1000"))
+    sleep_seconds = int(os.getenv("SLEEP_SECONDS", "30"))
+
+    ingestion = FakeIngestData(**db_config)
+    ingestion.update_data()
+    while True:
+        logger.info("Starting new ingestion cycle...")
+
+        # Generate and insert new data
+        persons = ingestion.generate_data(batch_size=batch_size)
+        ingestion.add_new_data(persons)
+
+        # Simulate updates
+        updates_count = max(1, batch_size // 10)
+        logger.info(f"Simulating {updates_count} updates...")
+        
+        for _ in range(updates_count):
+            ingestion.update_data()
+
+        logger.info(f"Cycle completed. Sleeping {sleep_seconds} seconds...")
+        time.sleep(sleep_seconds)
+
+
+if __name__ == '__main__':
+    main()
         
