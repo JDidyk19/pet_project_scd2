@@ -1,5 +1,5 @@
 CREATE TABLE IF NOT EXISTS scd2_dimensional_users (
-    id SERIAL PRIMARY KEY.
+    id SERIAL PRIMARY KEY,
     user_id UUID,
     first_name TEXT NOT NULL,
     last_name TEXT NOT NULL,
